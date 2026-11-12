@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Globe</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: sans-serif;
+            background: #000;
+        }
+        #cesiumContainer {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .search-box {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 8px;
+            border-radius: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .search-box input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-size: 16px;
+            padding: 0 12px;
+            width: 200px;
+        }
+        .search-box input::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        .search-box button {
+            background: #fff;
+            color: #333;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .weather-card {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(15px);
+            padding: 15px 25px;
+            border-radius: 20px;
+            color: #fff;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            min-width: 250px;
+            display: none;
+        }
+        .weather-card h2 {
+            margin: 0 0 5px 0;
+            font-size: 20px;
+        }
+        .weather-card p {
+            margin: 3px 0;
+            font-size: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="search-box">
+        <input type="text" id="cityInput" placeholder="Enter city name...">
+        <button onclick="searchCity()">Search</button>
+    </div>
+
+    <div id="cesiumContainer"></div>
+
+    <div class="weather-card" id="weatherCard">
+        <h2 id="cityName">--</h2>
+        <p id="temp">Temp: --</p>
+        <p id="condition">Condition: --</p>
+    </div>
+
+    <script>
+        Cesium.Ion.defaultAccessToken = '';
+
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            animation: false,
+            baseLayerPicker: false,
+            fullscreenButton: false,
+            vrButton: false,
+            geocoder: false,
+            homeButton: false,
+            infoBox: false,
+            sceneModePicker: false,
+            selectionIndicator: false,
+            timeline: false,
+            navigationHelpButton: false,
+            baseLayer: Cesium.ImageryLayer.fromProviderAsync(
+                Cesium.ArcGisMapServerImageryProvider.fromBasemapType(
+                    Cesium.ArcGisBaseMapType.SATELLITE
+                )
+            )
+        });
+
+        viewer.scene.screenSpaceCameraController.enableTilt = true;
+
+        async function searchCity() {
+            const query = document.getElementById('cityInput').value;
+            if (!query) return;
+
+            try {
+                const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1`);
+                const geoData = await geoRes.json();
+
+                if (!geoData.results || geoData.results.length === 0) {
+                    alert('City not found!');
+                    return;
+                }
+
+                const location = geoData.results[0];
+                const lat = location.latitude;
+                const lon = location.longitude;
+                const name = location.name;
+                const country = location.country || '';
+
+                viewer.camera.flyTo({
+                    destination: Cesium.Cartesian3.fromDegrees(lon, lat, 1500000),
+                    duration: 2.5
+                });
+
+                const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+                const weatherData = await weatherRes.json();
+                const current = weatherData.current_weather;
+
+                document.getElementById('cityName').innerText = `${name}, ${country}`;
+                document.getElementById('temp').innerText = `Temp: ${current.temperature}°C`;
+                document.getElementById('condition').innerText = `Windspeed: ${current.windspeed} km/h`;
+                document.getElementById('weatherCard').style.display = 'block';
+
+            } catch (error) {
+                console.error(error);
+                alert('Error fetching data!');
+            }
+        }
+    </script>
+</body>
+</html>
